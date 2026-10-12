@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Order journey explorer</title>
+<link rel="icon" href="data:,">
+<style>
+:root{color-scheme:light;--ink:#18303a;--muted:#536a72;--line:#d3dfe2;--accent:#0f6b5c;--stop:#9b2c3c;--focus:#1166c2}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#f3f7f8;color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{display:grid;place-items:center;padding:16px}
+form{width:min(380px,100%);background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px 22px 18px;box-shadow:0 8px 28px rgba(20,40,50,.08)}
+h1{font-size:19px;margin:0 0 4px}
+p{margin:0 0 14px;color:var(--muted)}
+label{display:block;font-weight:600;margin-bottom:4px}
+input{width:100%;font:inherit;border:1px solid #b9ccd1;border-radius:7px;padding:9px 11px}
+button{margin-top:12px;width:100%;font:inherit;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:7px;padding:10px;cursor:pointer}
+button:disabled{opacity:.6;cursor:default}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+#msg{margin:10px 0 0;min-height:1.4em;font-size:14px}
+#msg.bad{color:var(--stop)}
+</style>
+</head>
+<body>
+<form id="gate" hidden>
+ <h1>Order journey explorer</h1>
+ <p>Enter the team password to open it.</p>
+ <label for="pw">Password</label>
+ <input id="pw" type="password" autocomplete="current-password">
+ <button id="go" type="submit">Open</button>
+ <p id="msg" role="status" aria-live="polite"></p>
+</form>
+<noscript>This page needs JavaScript.</noscript>
+<script type="module">
+// The only public part of the explorer. Everything else (the explorer, its diagram, notes and images) is stored in a
+// private Supabase project and is released only to the shared account this password signs in to.
+const CONFIG={"url": "https://pworuqffrchktbwppgqz.supabase.co", "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3b3J1cWZmcmNoa3Rid3BwZ3F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjQ1NDgsImV4cCI6MjEwNzE0MDU0OH0.dT7jh9QMCd58NOTAvv0hYVpuJuP6fdxy3gi9SO_kdKM", "email": "andrew@be.free"}; // filled in by build-codepen.py
+const LIB='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+const $=id=>document.getElementById(id),form=$('gate'),msg=$('msg');
+const say=(t,bad=false)=>{msg.textContent=t;msg.className=bad?'bad':''};
+let sb;
+// The password is asked on every visit: the sign-in lives only in this page's memory, never in the browser's storage,
+// so opening or reloading the page starts locked. A sign-in kept by an earlier version of this page is removed.
+try{localStorage.removeItem('order-journey-auth')}catch{}
+try{const {createClient}=await import(LIB);
+ // One client for the whole visit: the explorer reuses it, so only one of them ever refreshes the sign-in.
+ sb=createClient(CONFIG.url,CONFIG.anonKey,{auth:{persistSession:false,autoRefreshToken:true,detectSessionInUrl:false}})}
+catch{form.hidden=false;say('Couldn’t reach the sign-in service. Check your connection and reload.',true);throw new Error('sign-in service unavailable')}
+async function openExplorer(){say('Opening…');
+ const {data,error}=await sb.storage.from('app').download('explorer.html');
+ if(error||!data){if(error?.status===400||error?.status===401||error?.status===403){await sb.auth.signOut().catch(()=>{});return false}
+  say('Signed in, but the explorer couldn’t be loaded. Try again in a moment.',true);return false}
+ window.__orderJourneySupabase=sb;
+ const html=await data.text();document.open();document.write(html);document.close();return true}
+form.hidden=false;$('pw').focus();
+form.addEventListener('submit',async e=>{e.preventDefault();const password=$('pw').value;if(!password)return say('Enter the password.',true);
+ $('go').disabled=true;say('Checking…');
+ const {error}=await sb.auth.signInWithPassword({email:CONFIG.email,password});
+ if(error){$('go').disabled=false;say(error.status===429||/rate/i.test(error.message)?'Too many attempts. Wait a few minutes, then try again.':'That password isn’t right.',true);$('pw').select();return}
+ if(!await openExplorer()){$('go').disabled=false;if(!msg.className)say('That password worked, but the explorer isn’t available yet. Ask the page owner.',true)}});
+</script>
+</body>
+</html>
