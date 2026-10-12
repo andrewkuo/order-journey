@@ -48,12 +48,15 @@ try{const {createClient}=await import(LIB);
  // One client for the whole visit: the explorer reuses it, so only one of them ever refreshes the sign-in.
  sb=createClient(CONFIG.url,CONFIG.anonKey,{auth:{persistSession:false,autoRefreshToken:true,detectSessionInUrl:false}})}
 catch{form.hidden=false;say('Couldn’t reach the sign-in service. Check your connection and reload.',true);throw new Error('sign-in service unavailable')}
+// Always the latest explorer: fetched straight from storage without the browser's cache, so a newly uploaded
+// explorer.html shows on the next sign-in instead of up to an hour later.
 async function openExplorer(){say('Opening…');
- const {data,error}=await sb.storage.from('app').download('explorer.html');
- if(error||!data){if(error?.status===400||error?.status===401||error?.status===403){await sb.auth.signOut().catch(()=>{});return false}
+ const {data:{session}}=await sb.auth.getSession();let html=null,status=0;
+ try{const r=await fetch(`${CONFIG.url}/storage/v1/object/app/explorer.html`,{headers:{apikey:CONFIG.anonKey,Authorization:`Bearer ${session?.access_token||''}`},cache:'no-store'});status=r.status;if(r.ok)html=await r.text()}catch{}
+ if(html==null){if([400,401,403,404].includes(status)){await sb.auth.signOut().catch(()=>{});return false}
   say('Signed in, but the explorer couldn’t be loaded. Try again in a moment.',true);return false}
  window.__orderJourneySupabase=sb;
- const html=await data.text();document.open();document.write(html);document.close();return true}
+ document.open();document.write(html);document.close();return true}
 form.hidden=false;$('pw').focus();
 form.addEventListener('submit',async e=>{e.preventDefault();const password=$('pw').value;if(!password)return say('Enter the password.',true);
  $('go').disabled=true;say('Checking…');
